@@ -7,18 +7,14 @@ pygame.init()
 
 class Board:
     def __init__(self, nCell=15):
-        self.nCell = nCell
-        self.unit = 40
-        self.length = (nCell+3) * 40 # length of the board
+        self.nCell        = nCell
+        self.unit         = 40
+        self.length       = (nCell+3) * 40 # length of the board
         self.screenLength = (nCell+5) * 40 # length of the screen
-        self.board = pygame.Surface((self.length, self.length))
-        self.BoardTracker = np.full((nCell+4, nCell+4), 0, dtype=int)
+        self.board        = pygame.Surface((self.length, self.length))
+        self.BoardTracker = np.array([[0]*nCell+[2]*4] * nCell + [[2]*(nCell+4)] * 4)
         self.EventTracker = []
-        self.clock   = pygame.time.Clock()
-
-        for idx, r in enumerate(self.BoardTracker):
-            r[-4:] = 2
-            if idx>14: r[:] = 2
+        self.clock        = pygame.time.Clock()
 
     def DisplayScreen(self):
         self.screen = pygame.display.set_mode((self.screenLength, self.screenLength))
@@ -89,19 +85,49 @@ class Board:
             self.clock.tick(24)
 
     def PlaceStone(self, gridloc):
+        # place stone on the board
         self.BoardTracker[gridloc[1]][gridloc[0]] = 1-2*(len(self.EventTracker)%2) # 1 for black, -1 for white
         self.EventTracker.append(gridloc)
         self.DisplayBoard()
+        
+        # count
         self.b_ones, self.b_twos, self.b_tres, self.b_furs, self.b_fivs, self.b_sixs, self.b_sevs = brain.count(1 , self.BoardTracker) # count for black
         self.w_ones, self.w_twos, self.w_tres, self.w_furs, self.w_fivs, self.w_sixs, self.w_sevs = brain.count(-1, self.BoardTracker) # count for white
-        if   len(self.EventTracker)%2==1: self.IsTerminal(self.b_fivs, 'Black')
-        elif len(self.EventTracker)%2==0: self.IsTerminal(self.w_fivs, 'White')
-        self.GetInput()
+        
+        # terminal state checking
+        if   len(self.EventTracker)%2==1: terminal_state = self.IsTerminal(self.b_fivs, 'Black')
+        elif len(self.EventTracker)%2==0: terminal_state = self.IsTerminal(self.w_fivs, 'White')
+        
+        # calculate score of the current board
+        if not terminal_state: b_CurrentScore, w_CurrentScore = self.CalculateScore()
 
+        # wait for next input
+        self.GetInput()
+    
     def RemoveStone(self):
         self.BoardTracker[self.EventTracker[-1][1]][self.EventTracker[-1][0]] = 0
         self.EventTracker = self.EventTracker[:-1]
         board.DisplayBoard()
+
+    def CalculateScore(self):
+        print(f'\n----------count: {len(self.EventTracker)}----------')
+        b_CurrentScore, w_CurrentScore = 0, 0
+        
+        # calculate Black's score of the current board
+        if len(self.b_ones): b_ones_sickness = brain.SicknessTest(self.b_ones, self.BoardTracker)[1]; b_ones_ScoreDict = brain.AssignScore(self.b_ones, b_ones_sickness, 'Black'); b_CurrentScore += b_ones_ScoreDict['NormalScore']
+        if len(self.b_twos): b_twos, b_twos_sickness = brain.SicknessTest(self.b_twos, self.BoardTracker); b_twos_ScoreDict = brain.AssignScore(b_twos, b_twos_sickness, 'Black'); b_CurrentScore += b_twos_ScoreDict['NormalScore']
+        if len(self.b_tres): b_tres, b_tres_sickness = brain.SicknessTest(self.b_tres, self.BoardTracker); b_tres_ScoreDict = brain.AssignScore(b_tres, b_tres_sickness, 'Black'); b_CurrentScore += b_tres_ScoreDict['NormalScore']
+        if len(self.b_furs): b_furs, b_furs_sickness = brain.SicknessTest(self.b_furs, self.BoardTracker); b_furs_ScoreDict = brain.AssignScore(b_furs, b_furs_sickness, 'Black'); b_CurrentScore += b_furs_ScoreDict['NormalScore']
+
+        # calculate White's score of the current board
+        if len(self.w_ones): w_ones_sickness = brain.SicknessTest(self.w_ones, self.BoardTracker)[1]; w_ones_ScoreDict = brain.AssignScore(self.w_ones, w_ones_sickness, 'White'); w_CurrentScore += w_ones_ScoreDict['NormalScore']
+        if len(self.w_twos): w_twos, w_twos_sickness = brain.SicknessTest(self.w_twos, self.BoardTracker); w_twos_ScoreDict = brain.AssignScore(w_twos, w_twos_sickness, 'White'); w_CurrentScore += w_twos_ScoreDict['NormalScore']
+        if len(self.w_tres): w_tres, w_tres_sickness = brain.SicknessTest(self.w_tres, self.BoardTracker); w_tres_ScoreDict = brain.AssignScore(w_tres, w_tres_sickness, 'White'); w_CurrentScore += w_tres_ScoreDict['NormalScore']
+        if len(self.w_furs): w_furs, w_furs_sickness = brain.SicknessTest(self.w_furs, self.BoardTracker); w_furs_ScoreDict = brain.AssignScore(w_furs, w_furs_sickness, 'White'); w_CurrentScore += w_furs_ScoreDict['NormalScore']
+
+        print(f"Black's score: {b_CurrentScore}")
+        print(f"White's score: {w_CurrentScore}")
+        return b_CurrentScore, w_CurrentScore
 
     def IsTerminal(self, fivs, player):
         is_terminal = brain.IsTerminal(fivs)
@@ -110,6 +136,8 @@ class Board:
             terminal_font = pygame.font.Font(None, 40)
             terminal_state = terminal_font.render(f"Terminal state. {player} won!", True, "firebrick2")
             self.board.blit(terminal_state,(5*self.unit, 17*self.unit))
+            return True
+        return False
 
 board = Board()
 board.DisplayScreen()
