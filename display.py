@@ -1,8 +1,17 @@
+import brain
 import pygame
 import numpy as np
 from sys import exit
-import brain
+from random import randint
+from optparse import OptionParser
 
+parser = OptionParser(usage="%prog [options]")
+parser.add_option('--AiMode'  , dest='AiMode'  , default=False, action='store_true')
+parser.add_option('--MyPlayer', dest='MyPlayer', default=1    , type=int, help='only meaningful if AiMode is activated. 1 means black, -1 means white.')
+(options, args) = parser.parse_args()
+
+AiMode   = options.AiMode
+MyPlayer = options.MyPlayer
 pygame.init()
 
 class Board:
@@ -62,7 +71,7 @@ class Board:
         ### STONES ###
         for idx, gridloc in enumerate(self.EventTracker):
             color = 'grey8' if idx%2==0 else 'grey97'
-            pygame.draw.circle(self.board, color, ((gridloc[0]+2)*40, (gridloc[1]+2)*40), radius=16)
+            pygame.draw.circle(self.board, color, ((gridloc[1]+2)*40, (gridloc[0]+2)*40), radius=16)
 
     def GetInput(self):
         while True:
@@ -72,21 +81,21 @@ class Board:
                     exit()
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1: 
-                        self.gridloc = tuple(np.array(np.round(np.array(pygame.mouse.get_pos())/board.unit)-3,dtype=int))
+                        self.gridloc = (round(pygame.mouse.get_pos()[1]/self.unit-3), round(pygame.mouse.get_pos()[0]/self.unit-3))
                         undo_pressed = (pygame.mouse.get_pos()[0] >= board.undoLoc[0])&(pygame.mouse.get_pos()[0] <= board.undoLoc[0]+board.undoSize[0])&(pygame.mouse.get_pos()[1] >= board.undoLoc[1])&(pygame.mouse.get_pos()[1] <= board.undoLoc[1]+board.undoSize[1])
-                        grid_out = (self.gridloc[1] >= 15)|(self.gridloc[0] >= 15)|(self.gridloc[1] < 0)|(self.gridloc[0] < 0)
+                        grid_out = (self.gridloc[0] >= 15)|(self.gridloc[1] >= 15)|(self.gridloc[0] < 0)|(self.gridloc[1] < 0)
 
                         if undo_pressed: self.RemoveStone() # clicked undo button
                         elif grid_out: print("Selected location is outside the grid.") # clicked ouside the grid
-                        elif board.BoardTracker[self.gridloc[1]][self.gridloc[0]] != 0: print("Stone already exists. Place it somewhere else.") # clicked where a stone exists
-                        elif ~(board.BoardTracker[self.gridloc[1]][self.gridloc[0]]): self.PlaceStone(self.gridloc) # clicked the correct spot for a stone
+                        elif self.BoardTracker[self.gridloc[0]][self.gridloc[1]] != 0: print("Stone already exists. Place it somewhere else.") # clicked where a stone exists
+                        elif ~(self.BoardTracker[self.gridloc[0]][self.gridloc[1]]): self.PlaceStone(self.gridloc) # clicked the correct spot for a stone
             self.screen.blit(self.board, (self.unit, self.unit))
             pygame.display.update()
             self.clock.tick(24)
 
     def PlaceStone(self, gridloc):
         # place stone on the board
-        self.BoardTracker[gridloc[1]][gridloc[0]] = 1-2*(len(self.EventTracker)%2) # 1 for black, -1 for white
+        self.BoardTracker[gridloc[0]][gridloc[1]] = 1-2*(len(self.EventTracker)%2) # 1 for black, -1 for white
         self.EventTracker.append(gridloc)
         self.DisplayBoard()
         
@@ -95,49 +104,29 @@ class Board:
         self.w_ones, self.w_twos, self.w_tres, self.w_furs, self.w_fivs, self.w_sixs, self.w_sevs = brain.count(-1, self.BoardTracker) # count for white
         
         # terminal state checking
-        if   len(self.EventTracker)%2==1: terminal_state = self.IsTerminal(self.b_fivs, 'Black')
-        elif len(self.EventTracker)%2==0: terminal_state = self.IsTerminal(self.w_fivs, 'White')
+        if   len(self.EventTracker)%2==1: is_terminal = brain.IsTerminal(board, 'Black')
+        elif len(self.EventTracker)%2==0: is_terminal = brain.IsTerminal(board, 'White')
         
         # calculate score of the current board
-        if not terminal_state: b_CurrentScore, w_CurrentScore = self.CalculateScore()
+        if not is_terminal: 
+            self.BlackScore = brain.AssignScore(board, 'Black')
+            self.WhiteScore = brain.AssignScore(board, 'White')
 
         # wait for next input
-        self.GetInput()
+        if not AiMode: self.GetInput()
+        elif (len(self.EventTracker)%2==0 and MyPlayer==-1 and not is_terminal) | (len(self.EventTracker)%2==1 and MyPlayer==1 and not is_terminal): self.AiPlaceStone()
+        else: self.GetInput()
     
     def RemoveStone(self):
         self.BoardTracker[self.EventTracker[-1][1]][self.EventTracker[-1][0]] = 0
         self.EventTracker = self.EventTracker[:-1]
         board.DisplayBoard()
 
-    def CalculateScore(self):
-        print(f'\n----------count: {len(self.EventTracker)}----------')
-        b_CurrentScore, w_CurrentScore = 0, 0
-        
-        # calculate Black's score of the current board
-        if len(self.b_ones): b_ones_sickness = brain.SicknessTest(self.b_ones, self.BoardTracker)[1]; b_ones_ScoreDict = brain.AssignScore(self.b_ones, b_ones_sickness, 'Black'); b_CurrentScore += b_ones_ScoreDict['NormalScore']
-        if len(self.b_twos): b_twos, b_twos_sickness = brain.SicknessTest(self.b_twos, self.BoardTracker); b_twos_ScoreDict = brain.AssignScore(b_twos, b_twos_sickness, 'Black'); b_CurrentScore += b_twos_ScoreDict['NormalScore']
-        if len(self.b_tres): b_tres, b_tres_sickness = brain.SicknessTest(self.b_tres, self.BoardTracker); b_tres_ScoreDict = brain.AssignScore(b_tres, b_tres_sickness, 'Black'); b_CurrentScore += b_tres_ScoreDict['NormalScore']
-        if len(self.b_furs): b_furs, b_furs_sickness = brain.SicknessTest(self.b_furs, self.BoardTracker); b_furs_ScoreDict = brain.AssignScore(b_furs, b_furs_sickness, 'Black'); b_CurrentScore += b_furs_ScoreDict['NormalScore']
-
-        # calculate White's score of the current board
-        if len(self.w_ones): w_ones_sickness = brain.SicknessTest(self.w_ones, self.BoardTracker)[1]; w_ones_ScoreDict = brain.AssignScore(self.w_ones, w_ones_sickness, 'White'); w_CurrentScore += w_ones_ScoreDict['NormalScore']
-        if len(self.w_twos): w_twos, w_twos_sickness = brain.SicknessTest(self.w_twos, self.BoardTracker); w_twos_ScoreDict = brain.AssignScore(w_twos, w_twos_sickness, 'White'); w_CurrentScore += w_twos_ScoreDict['NormalScore']
-        if len(self.w_tres): w_tres, w_tres_sickness = brain.SicknessTest(self.w_tres, self.BoardTracker); w_tres_ScoreDict = brain.AssignScore(w_tres, w_tres_sickness, 'White'); w_CurrentScore += w_tres_ScoreDict['NormalScore']
-        if len(self.w_furs): w_furs, w_furs_sickness = brain.SicknessTest(self.w_furs, self.BoardTracker); w_furs_ScoreDict = brain.AssignScore(w_furs, w_furs_sickness, 'White'); w_CurrentScore += w_furs_ScoreDict['NormalScore']
-
-        print(f"Black's score: {b_CurrentScore}")
-        print(f"White's score: {w_CurrentScore}")
-        return b_CurrentScore, w_CurrentScore
-
-    def IsTerminal(self, fivs, player):
-        is_terminal = brain.IsTerminal(fivs)
-        if is_terminal:
-            print(f"Terminal state. {player} won!")
-            terminal_font = pygame.font.Font(None, 40)
-            terminal_state = terminal_font.render(f"Terminal state. {player} won!", True, "firebrick2")
-            self.board.blit(terminal_state,(5*self.unit, 17*self.unit))
-            return True
-        return False
+    def AiPlaceStone(self):
+        self.EventCands = brain.GetEventCand(board)
+        NextMove = brain.Minimax(board)
+        self.PlaceStone(self.EventCands[randint(0,len(self.EventCands)-1)])
+        #self.PlaceStone(NextMove)
 
 board = Board()
 board.DisplayScreen()
