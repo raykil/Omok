@@ -1,13 +1,11 @@
-from collections import Counter
 import numpy as np
-import pygame
-from prettytable import PrettyTable
 from random import randint
+from collections import Counter
 
-def count(player, BoardTracker, space_allowed=2, debug=False):
+def count(board, player, space_allowed=2, debug=False):
     """
         This function counts and returns the number of 1s, 2s, 3s, 4s, and 5s of a player.
-        player is represented as 1 (black) and -1 (white). 
+        Inputs: board is the board object, player is either 'Black' or 'White'. Translated into 1 or -1 inside the function.
         Notes on variables:
           - 'playerstones' is a list containing tuples that represent all stones placed by a player.
           - 'directions' represens row-col indices relative to pivot stone in the order of (northwest-southeast), (north-south), (northeast-southwest), and (west-east).
@@ -17,12 +15,13 @@ def count(player, BoardTracker, space_allowed=2, debug=False):
           - 'space_allowed' is an integer representing spaces allowed within a connection.
     """
     if debug: print('')
+    player = 1 if player=='Black' else -1
 
     # gathering player stones
     playerstones = []
-    for row in range(len(BoardTracker)):
-        for col in range(len(BoardTracker[0])):
-            if BoardTracker[row][col] == player: 
+    for row in range(len(board.BoardTracker)):
+        for col in range(len(board.BoardTracker[0])):
+            if board.BoardTracker[row][col] == player: 
                 playerstones.append((row,col))
 
     ones, twos, tres, furs, fivs, sixs, sevs = [],[],[],[],[],[],[]
@@ -38,14 +37,14 @@ def count(player, BoardTracker, space_allowed=2, debug=False):
 
             # "upper" directions
             for n in range(1,7):
-                if BoardTracker[r+direction[0]*n][c+direction[1]*n] == player: stones.append((r+direction[0]*n, c+direction[1]*n))
-                elif (BoardTracker[r+direction[0]*n][c+direction[1]*n] == 0) & (space1 < space_allowed): space1 += 1
+                if board.BoardTracker[r+direction[0]*n][c+direction[1]*n] == player: stones.append((r+direction[0]*n, c+direction[1]*n))
+                elif (board.BoardTracker[r+direction[0]*n][c+direction[1]*n] == 0) & (space1 < space_allowed): space1 += 1
                 else: break
                 
             # "lower" directions
             for n in range(1,7):
-                if BoardTracker[r+direction[2]*n][c+direction[3]*n] == player: stones.append((r+direction[2]*n, c+direction[3]*n))
-                elif (BoardTracker[r+direction[2]*n][c+direction[3]*n] == 0) & (space2 < space_allowed): space2 += 1
+                if board.BoardTracker[r+direction[2]*n][c+direction[3]*n] == player: stones.append((r+direction[2]*n, c+direction[3]*n))
+                elif (board.BoardTracker[r+direction[2]*n][c+direction[3]*n] == 0) & (space2 < space_allowed): space2 += 1
                 else: break
             
             connected.append(stones)
@@ -68,42 +67,14 @@ def count(player, BoardTracker, space_allowed=2, debug=False):
     if len(sixs): sixs = [sorted(six, key=lambda x: (x[0], x[1])) for six in sixs]
     if len(sevs): sevs = [sorted(sev, key=lambda x: (x[0], x[1])) for sev in sevs]
     if debug: print(f'ones: {ones}\ntwos: {twos}\ntres: {tres}\nfurs: {furs}\nfivs: {fivs}\nsixs: {sixs}\nsevs: {sevs}\n')    
-    return ones, twos, tres, furs, fivs, sixs, sevs
+    return {'ones': ones, 'twos': twos, 'tres': tres, 'furs': furs, 'fivs': fivs, 'sixs': sixs, 'sevs': sevs}
 
-def IsTerminal(board, player, connect_objective=5):
-    """
-        This function checks if a board is a terminal state or not.
-        The termination rule can be easily changed by just setting the value of 'connect_objective' variable--
-        e.g., if you want to connect 6 rather than connect 5, just change connect_objective=6.
-        Here, player is a string--'Black' or 'White'.
-    """
-    if   player=='Black': fivs = board.b_fivs
-    elif player=='White': fivs = board.w_fivs
-    # check if terminal state
-    if len(fivs):
-        fivs, is_terminal = fivs[0], True
-        for s in range(connect_objective-1):
-            if (abs(fivs[s][0] - fivs[s+1][0]) < 2) & (abs(fivs[s][1] - fivs[s+1][1]) < 2): continue
-            else: is_terminal = False; break
-    else: return False
-    
-    # things to do if terminal state
-    if is_terminal:
-        terminal_font = pygame.font.Font(None, 40)
-        terminal_state = terminal_font.render(f"Terminal state. {player} won!", True, "firebrick2")
-        board.board.blit(terminal_state,(5*board.unit, 17*board.unit))
-        if   player=='White': board.WhiteScore = 5
-        elif player=='Black': board.BlackScore = 5
-        print(f"Terminal state. {player} won!")
-        return True
-    else: return False
-
-def SicknessTest(connections, BoardTracker):
+def SicknessTest(connections, board):
     """
         This function performs what I call the 'sickness test'.
         Any connection of length at least 2 has two endpoints called edge1 (the one with lower row/col value) and edge2 (the one with greater row/col value).
-        The process of checking if each endpoint of a connection is blocked by the opponent is called the 'sickness test',
-        because I call the connections that are open on both endpoints 'live', those blocked on one side 'sick', and those blocked on both sides 'dead'.
+        The process of checking if each endpoint of a connection is blocked by the opponent is called the 'sickness test'.
+        I call the connections that are open on both endpoints 'live', those blocked on one side 'sick', and those blocked on both sides 'dead'.
         The function returns a dictionary.
 
         Notes on 'sickness_value': default open space is both side open (thus 2), gets subtracted whenever an edge is blocked.
@@ -113,9 +84,9 @@ def SicknessTest(connections, BoardTracker):
         if len(connections[0])==1: 
             r, c = ns[0][0], ns[0][1]
             sickness_value = [
-                BoardTracker[r-1][c-1], BoardTracker[r-1][c+0], BoardTracker[r-1][c+1],
-                BoardTracker[r+0][c-1]                        , BoardTracker[r+0][c+1],
-                BoardTracker[r+1][c-1], BoardTracker[r+1][c+0], BoardTracker[r+1][c+1],
+                board.BoardTracker[r-1][c-1], board.BoardTracker[r-1][c+0], board.BoardTracker[r-1][c+1],
+                board.BoardTracker[r+0][c-1]                              , board.BoardTracker[r+0][c+1],
+                board.BoardTracker[r+1][c-1], board.BoardTracker[r+1][c+0], board.BoardTracker[r+1][c+1],
             ].count(0)*0.125
             
         else:
@@ -124,17 +95,17 @@ def SicknessTest(connections, BoardTracker):
             edge1, edge2 = ns[0], ns[-1]
         
             # testing edge1
-            if BoardTracker[edge1[0]-dir_r][edge1[1]-dir_c]==0: pass
+            if board.BoardTracker[edge1[0]-dir_r][edge1[1]-dir_c]==0: pass
             else: sickness_value -= 1
             
             # testing edge2
-            if BoardTracker[edge2[0]+dir_r][edge2[1]+dir_c]==0: pass
+            if board.BoardTracker[edge2[0]+dir_r][edge2[1]+dir_c]==0: pass
             else: sickness_value -= 1
 
         sickness.append(sickness_value)
     return sickness
 
-def AssignScore(board, player, debug=False):
+def CalculateScore(board, player, debug=False):
     """
         This function calculates and assigns a player's current normalized score.
         This function contains parameters whose values must be tested and optimized (machine learning?).
@@ -148,6 +119,7 @@ def AssignScore(board, player, debug=False):
           - 'steepness'  : a value specifying how steep the arctan graph will approach the asymptotic value. 
                            Big changes according to steepness happens at lower x values, while the number of n-connections lie in the region where big changes happen.
                            Thus, this parameter might give significant change.
+        This function returns the score (a float) for a player.
     """
     ScoreParams = { # can black and white be different?
         'ones': {'raw_score': 1, 'sick_factor': 1/2, 'dead_factor': 0.0, 'amplitude': 0.5, 'steepness': 1.0},
@@ -155,29 +127,33 @@ def AssignScore(board, player, debug=False):
         'tres': {'raw_score': 3, 'sick_factor': 2/3, 'dead_factor': 0.0, 'amplitude': 1.5, 'steepness': 4.0},
         'furs': {'raw_score': 4, 'sick_factor': 3/4, 'dead_factor': 0.0, 'amplitude': 2.0, 'steepness': 5.5},
     }
-    if   player=='Black': ones, twos, tres, furs = board.b_ones, board.b_twos, board.b_tres, board.b_furs
-    elif player=='White': ones, twos, tres, furs = board.w_ones, board.w_twos, board.w_tres, board.w_furs
+    #CountsDict = count(player, board.BoardTracker)
+    CountsDict = count(board, player)
+    ones, twos, tres, furs, fivs = CountsDict['ones'], CountsDict['twos'], CountsDict['tres'], CountsDict['furs'], CountsDict['fivs']
 
-    TotalRawScore, TotalNormalScore = 0, 0
-    if debug: table = PrettyTable(); table.field_names = [f"Connections (Round{len(board.EventTracker)}, {player})", "Raw Score", "Normal Score"]
-    
-    for ns, n_param in zip([ones, twos, tres, furs], ScoreParams.keys()):
-        sickness  = SicknessTest(ns, board.BoardTracker)
-        amplitude, steepness = ScoreParams[n_param]['amplitude'], ScoreParams[n_param]['steepness']
+    #print(f'hello I am player {player}: \nones:{ones}\ntwos:{twos}\ntres:{tres}\nfurs:{furs}\nfivs:{fivs}\n')
+    if len(fivs): return 5.0
+    else:
+        TotalRawScore, TotalNormalScore = 0, 0
+        if debug: table = PrettyTable(); table.field_names = [f"Connections (Round{len(board.EventTracker)}, {player})", "Raw Score", "Normal Score"]
         
-        if len(ns) and len(ns[0])==1: # if doing ones...
-            RawScore    = sum(sickness)
-            NormalScore = amplitude * np.arctan(steepness*RawScore) * 2/np.pi
-        else:
-            raw_score, sick_factor, dead_factor = ScoreParams[n_param]['raw_score'], ScoreParams[n_param]['sick_factor'], ScoreParams[n_param]['dead_factor']
-            RawScore    = raw_score*sickness.count(2) + raw_score*sickness.count(1)*sick_factor + raw_score*sickness.count(0)*dead_factor
-            NormalScore = amplitude * np.arctan(steepness*RawScore) * 2/np.pi
-        
-        if debug: table.add_row([n_param, RawScore, NormalScore])
-        TotalRawScore    += RawScore
-        TotalNormalScore += NormalScore
-    if debug: table.add_row(['Total', TotalRawScore, TotalNormalScore]); print(table)
-    return TotalNormalScore
+        for ns, n_param in zip([ones, twos, tres, furs], ScoreParams.keys()):
+            sickness  = SicknessTest(ns, board)
+            amplitude, steepness = ScoreParams[n_param]['amplitude'], ScoreParams[n_param]['steepness']
+            
+            if len(ns) and len(ns[0])==1: # if doing ones...
+                RawScore    = sum(sickness)
+                NormalScore = amplitude * np.arctan(steepness*RawScore) * 2/np.pi
+            else:
+                raw_score, sick_factor, dead_factor = ScoreParams[n_param]['raw_score'], ScoreParams[n_param]['sick_factor'], ScoreParams[n_param]['dead_factor']
+                RawScore    = raw_score*sickness.count(2) + raw_score*sickness.count(1)*sick_factor + raw_score*sickness.count(0)*dead_factor
+                NormalScore = amplitude * np.arctan(steepness*RawScore) * 2/np.pi
+            
+            if debug: table.add_row([n_param, RawScore, NormalScore])
+            TotalRawScore    += RawScore
+            TotalNormalScore += NormalScore
+        if debug: table.add_row(['Total', TotalRawScore, TotalNormalScore]); print(table)
+        return TotalNormalScore
 
 def GetEventCand(board, max_space=2, debug=False):
     EventCands = []
@@ -191,21 +167,6 @@ def GetEventCand(board, max_space=2, debug=False):
     if debug: print("EventCands: ", EventCands)
     return EventCands
 
-def Minimax(board, nFuture=2):
-    """
-        This function 
-        Currently, the minimax criteria is to maximize the score differnece, 
-        because the difference will be maximized if opponent's score is minimized and my score is maximized.
-        BUT! Is this the only and best way? Should we treat maximization and minimization differently? Different weights?
-    """
-    FutureBoard = board.BoardTracker
-    FutureEvent = board.EventTracker
-    cands_to_test = board.EventCands
-    print('FutureBoard\n', FutureBoard)
-    print('cands_to_test', cands_to_test)
-
-    for cand in cands_to_test:
-        FutureBoard[cand[0]][cand[1]] = 1-2*(len(EventTracker)%2)
-        FutureEvent.append(cand)
-        
-    return board.EventCands[randint(0,len(cands_to_test)-1)]
+def GetNextMove(board):
+    eventcands = GetEventCand(board)
+    return eventcands[randint(0,len(eventcands)-1)]
